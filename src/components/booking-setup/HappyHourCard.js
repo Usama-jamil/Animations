@@ -1,0 +1,409 @@
+import {
+  SafeAreaView,
+  Text,
+  View,
+  FlatList,
+  Image,
+  StyleSheet,
+  Dimensions,
+  TouchableOpacity,
+} from 'react-native';
+import {useTranslation} from 'react-i18next';
+import {colors, commonStyles, fonts} from '../../utils/styles';
+import FastImage from 'react-native-fast-image';
+import moment from 'moment';
+import {useSharedValue} from 'react-native-reanimated';
+import Carousel, {Pagination} from 'react-native-reanimated-carousel';
+import ClockIcon from '../../../assets/icons/clock.svg';
+import {
+  RemoveSelectedService,
+  SetSelectedService,
+} from '../../store/slices/cart';
+import {useDispatch, useSelector} from 'react-redux';
+import Toast from 'react-native-toast-message';
+import Circle_check from '../../../assets/icons/circle_check_fill.svg';
+import Circle_Uncheck from '../../../assets/icons/circle_check_unfill.svg';
+import React from 'react';
+import { useRoute } from '@react-navigation/native';
+
+const screenWidth = Dimensions.get('window').width;
+const isSmallScreen = screenWidth < 400;
+
+const HappyHourCard = ({data, type}) => {
+  const {t} = useTranslation();
+  const width = Dimensions.get('window').width;
+  const progress = useSharedValue(0);
+  const carouselRef = React.useRef(null);
+  const {selectServies, branchid} = useSelector(state => state.cart);
+  const dispatch = useDispatch();
+  const filteredServices = selectServies.filter(
+    service => service.branch === branchid,
+  );
+  const route = useRoute()
+
+  console.log('route', route.name);
+
+  const calculateBundleTotal = (
+    services = [],
+    discountType = 'percentage',
+    discount,
+  ) => {
+    // Calculate total price of services
+    const servicesTotal = services.reduce(
+      (sum, service) => sum + (service.price || 0),
+      0,
+    );
+
+    // Subtotal before discount
+    const subtotal = servicesTotal;
+
+    let discountAmount = 0;
+
+    if (discountType === 'percentage') {
+      discountAmount = (servicesTotal * (discount || 0)) / 100;
+    } else if (discountType === 'amount') {
+      discountAmount = discount || 0;
+    }
+
+    const totalAfterDiscount = subtotal - discountAmount;
+
+    return {
+      subtotal,
+      discountAmount,
+      totalAfterDiscount,
+    };
+  };
+
+  const handleAddRemove = item => {
+    const isAlreadySelected = checkAlreadySelected(item._id);
+
+    if (isAlreadySelected) {
+      // Remove from Redux
+      dispatch(RemoveSelectedService(item._id));
+      Toast.show({
+        type: 'success',
+        position: 'top',
+        bottomOffset: 20,
+        text1: t('Success'),
+        text2: t('serviceRemoveSuccessfully'),
+        visibilityTime: 3000,
+      });
+    } else {
+      // Add to Redux
+      const updatedItem = {
+        ...item,
+        compaigntype: item.type,
+        compaignId: item?._id,
+      };
+      dispatch(SetSelectedService(updatedItem));
+      Toast.show({
+        type: 'success',
+        position: 'top',
+        bottomOffset: 20,
+        text1: t('Success'),
+        text2: t('serviceAddSuccessfully'),
+        visibilityTime: 3000,
+      });
+    }
+  };
+
+  const checkAlreadySelected = itemId => {
+    return filteredServices.some(service => service?._id === itemId);
+  };
+
+  const renderItem = ({item}) => {
+    const {subtotal, discountAmount, totalAfterDiscount} = calculateBundleTotal(
+      item?.services,
+      (discountType = 'percentage'),
+      item?.discount,
+    );
+    const isSelected = checkAlreadySelected(item._id);
+    const onPressPagination = index => {
+      carouselRef.current?.scrollTo({index, animated: true});
+    };
+
+    const renderCarouselItem = ({item: crouselItem}) => (
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: '#F6f6f6',
+            borderRadius: 12,
+            width: width - 40,
+          },
+        ]}>
+        {/* Show the first image if available */}
+        <FastImage
+          source={{uri: crouselItem?.images?.[0]}}
+          style={styles.image}
+          resizeMode={FastImage.resizeMode.cover}
+        />
+
+        <View
+          style={[styles.row, {justifyContent: 'space-between', marginTop: 5}]}>
+          <Text style={styles.dealTitle}>{crouselItem?.title}</Text>
+          {item?.validTill && (
+            <View style={styles.dateContainer}>
+              <Image
+                source={require('../../../assets/icons/calender.png')}
+                style={styles.calendarIcon}
+              />
+              <Text style={styles.dateText}>
+                {moment(item?.validTill).format('DD-MM-YYYY')}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View
+          style={[styles.row, {justifyContent: 'space-between', marginTop: 5}]}>
+          <View style={styles.row}>
+            <Text style={styles.discountedPrice}>
+              {totalAfterDiscount} {item?.currency?.code}
+            </Text>
+            <Text style={styles.originalPrice}>
+              {subtotal} {item?.currency?.code}
+            </Text>
+          </View>
+
+          <View style={styles.row}>
+            <ClockIcon width={18} height={18} />
+            <Text
+              style={[styles.dateText, {color: colors.black, marginLeft: 8}]}>
+              {item?.discount}%
+            </Text>
+          </View>
+        </View>
+        {type !== 'earlyBird' && (
+          <View style={[styles.row, {marginTop: 5}]}>
+            <ClockIcon width={18} height={18} />
+            <Text style={[styles.timeText, {marginLeft: 10}]}>
+              {moment(item?.happyHour?.startTime, 'HH:mm').format('hh:mm A')} -{' '}
+              {moment(item?.happyHour?.endTime, 'HH:mm').format('hh:mm A')}
+            </Text>
+          </View>
+        )}
+        {route.name !== 'ReviewConfirm' && (
+        <TouchableOpacity
+          style={[
+            commonStyles.btnContainer,
+            {backgroundColor: isSelected ? colors.warning : colors.primary},
+          ]}
+          onPress={() => handleAddRemove(item)}>
+          <Text
+            allowFontScaling={false}
+            style={[commonStyles.btnText, {color: colors.background}]}>
+            {isSelected ? t('remove') : t('buy')}
+          </Text>
+        </TouchableOpacity>
+        )}
+      </View>
+    );
+
+    return (
+      <>
+        {/* Carousel with full cards */}
+        <Carousel
+          ref={carouselRef}
+          loop={false}
+          snapEnabled={true}
+          pagingEnabled={true}
+          autoPlay={false}
+          width={width}
+          height={type === 'earlyBird' && route.name !== 'ReviewConfirm' ? 270 : type === 'earlyBird' && route.name === 'ReviewConfirm' ? 200:  290} // Adjust this based on your card height
+          data={item.services || []}
+          onProgressChange={(_, absoluteProgress) => {
+            progress.value = absoluteProgress;
+          }}
+          renderItem={renderCarouselItem}
+        />
+        {item.services?.length > 1 && (
+          <Pagination.Basic
+            progress={progress}
+            data={item.services || []}
+            dotStyle={styles.InActiveindicator}
+            activeDotStyle={styles.Activeindicator}
+            containerStyle={styles.indicatorContainer}
+            onPress={onPressPagination}
+          />
+        )}
+      </>
+    );
+  };
+
+  return (
+    <FlatList
+      data={data}
+      renderItem={renderItem}
+      keyExtractor={item => item._id}
+      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      showsVerticalScrollIndicator={false}
+    />
+  );
+};
+
+const styles = StyleSheet.create({
+  card: {
+    padding: 8,
+    marginTop: screenWidth < 400 ? 10 : 10,
+    borderRadius: 12,
+    flex: 1,
+  },
+  inner_card: {
+    padding: 8,
+    borderWidth: 1,
+    borderColor: colors.borderColor,
+    borderRadius: 12,
+  },
+  image: {
+    height: 124,
+    width: '100%',
+    borderRadius: 10,
+    resizeMode: 'cover',
+    position: 'relative',
+  },
+
+  dealTitle: {
+    fontFamily: fonts.semiBold,
+    fontSize: 15,
+    color: colors.black,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  discountedPrice: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    color: colors.black,
+    marginRight: 8,
+  },
+  originalPrice: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: colors.warning,
+    textDecorationLine: 'line-through',
+  },
+  discountBadge: {
+    backgroundColor: colors.whiteGray,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  discountText: {
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    color: colors.purple,
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  dateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  clockIcon: {
+    width: 16,
+    height: 16,
+    tintColor: colors.gray,
+    marginRight: 8,
+  },
+  calendarIcon: {
+    width: 16,
+    height: 16,
+    tintColor: colors.graycolor,
+    marginRight: 8,
+  },
+  timeText: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    color: colors.purple,
+  },
+  dateText: {
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    color: colors.warning,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addButton: {
+    ...commonStyles.btnContainer,
+    marginHorizontal: 20,
+  },
+  addButtonText: {
+    ...commonStyles.btnText,
+    color: colors.white,
+  },
+  discountHeader: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 10,
+    backgroundColor: colors.purple,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  icon: {
+    width: isSmallScreen ? 14 : 16,
+    height: isSmallScreen ? 14 : 16,
+    resizeMode: 'contain',
+  },
+
+  serviceIcon: {
+    width: '100%',
+    height: 84,
+    marginRight: 10,
+    tintColor: colors.purple, // or whatever color you prefer
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  serviceTitle: {
+    fontSize: 15,
+    fontFamily: fonts.semiBold,
+    color: colors.black,
+    marginTop: 10,
+  },
+  servicePrice: {
+    fontSize: 13,
+    fontFamily: fonts.regular,
+    color: colors.black,
+  },
+  indicatorContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    position: 'absolute',
+    bottom: -5,
+    left: '40%',
+    right: '40%',
+    marginVertical: 10,
+    marginTop: 10,
+  },
+  Activeindicator: {
+    width: 18,
+    height: 5,
+    borderRadius: 5,
+    marginHorizontal: 2,
+    backgroundColor: colors.primary,
+  },
+  InActiveindicator: {
+    width: 8,
+    height: 5,
+    borderRadius: 5,
+    marginHorizontal: 2,
+    backgroundColor: '#E9E9E9',
+  },
+});
+
+export default HappyHourCard;
